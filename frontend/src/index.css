@@ -1,0 +1,1074 @@
+/* Ledger — a private, local record of what you spend, earn, and put aside, in rupees.
+
+   The motif: the ₹ sign is two stacked bars over a stem, and those bars are the
+   line you measure yourself against. So a double rule marks every place the
+   interface draws a threshold — the wordmark, the active tab, the head of each
+   panel, and the budget line across the hero track. It is the one decorative
+   idea, and it means something.
+
+   Palette rule: surfaces are cool neutral, and colour is reserved for the three
+   states money can be in.
+     ink   — spent, the ordinary case
+     teal  — kept, and every control you can actually press
+     rose  — over budget, or a month that cost more than it earned
+   Nothing else gets a colour. If it needs emphasis, it gets weight or space. */
+
+:root {
+  /* One palette, not two: light-dark() picks a side from color-scheme, so each
+     value is written once instead of being repeated in a dark-mode block. */
+  color-scheme: light dark;
+
+  --bg: light-dark(#e9ecf1, #05080d);
+  --surface: light-dark(#ffffff, #0e141d);
+  --surface-2: light-dark(#f1f4f8, #141c27);
+  --line: light-dark(#d5dbe4, #232d3c);
+  --line-2: light-dark(#e6eaf0, #1a2230);
+
+  --ink: light-dark(#080c13, #eff3f8);
+  --ink-2: light-dark(#414b5c, #9aa7b8);
+  --ink-3: light-dark(#67748a, #78859a);
+
+  /* Spent is the ordinary case, so it is drawn in ink rather than a colour — but
+     not literally --ink, which inverts to near-white and makes a full-width bar
+     the loudest thing on a dark page. */
+  --spent: light-dark(#141c28, #9dabbd);
+
+  --keep: light-dark(#0a8375, #2ee0c6);
+  --keep-wash: light-dark(#e4f5f2, #0a2723);
+  --over: light-dark(#c81e46, #ff6183);
+  --over-wash: light-dark(#fdecef, #2a0d16);
+
+  --lift: 0 1px 2px light-dark(rgba(8, 12, 19, 0.05), rgba(0, 0, 0, 0.5)),
+    0 12px 28px -16px light-dark(rgba(8, 12, 19, 0.18), rgba(0, 0, 0, 0.9));
+  --lift-sm: 0 1px 2px light-dark(rgba(8, 12, 19, 0.06), rgba(0, 0, 0, 0.5));
+
+  --display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* Sharp, not raw: enough radius to read as machined, not enough to soften. */
+  --r: 4px;
+  --r-sm: 2px;
+
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The toggle overrides the system by narrowing color-scheme, which is all
+   light-dark() reads. No second palette to keep in sync. */
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+
+/* Labels a column that is visually self-evident but silent to a screen reader. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- shell ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+/* Stays put while the ledger scrolls past it: on a long month the nav should
+   never be something you scroll back up to find. */
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  padding: 1.75rem 1rem 1.5rem var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.02em;
+}
+
+/* The mark is the currency itself, set in the figure face the amounts use. */
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--mono);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1;
+  padding-bottom: 1px;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.125rem;
+}
+
+.rail-tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  border-radius: var(--r-sm);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  color: var(--ink-3);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.rail-tab:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.rail-tab.is-active {
+  color: var(--ink);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* The double bar of ₹, turned on its side to mark where you are. */
+.rail-tab.is-active::before {
+  content: '';
+  position: absolute;
+  left: -0.55rem;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  width: 3px;
+  border-left: 1px solid var(--keep);
+  border-right: 1px solid var(--keep);
+}
+
+/* Separates the daily ledger from the things you set up once. */
+.rail-divider {
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  margin: 0.6rem 0;
+}
+
+.rail-foot { margin-top: auto; }
+
+.theme-toggle {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+/* Centred in whatever space the rail leaves, so a wide window reads as a
+   composition rather than a column pinned to the left edge. */
+.view {
+  width: 100%;
+  max-width: 78rem;
+  margin-inline: auto;
+  padding: 2rem var(--gutter) 5rem;
+  min-width: 0;
+}
+
+.view-head { margin-bottom: 1.75rem; }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 0.4rem;
+}
+
+.view-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 3.2vw, 2.375rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+/* ---------- layout ----------
+   Panels tile two-up instead of stacking into one long ribbon, so the page
+   fills the window and the eye has somewhere to go across as well as down. */
+
+/* Panels in the same row match height: side by side they read as a deliberate
+   pair, where a short one next to a tall one just looks unfinished. */
+.grid {
+  display: grid;
+  gap: 1.125rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid > .panel { margin-bottom: 0; }
+
+.panel.is-wide { grid-column: 1 / -1; }
+
+/* ---------- panels ---------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  box-shadow: var(--lift-sm);
+  padding: 1.5rem;
+  margin-bottom: 1.125rem;
+  animation: rise 0.5s var(--ease) backwards;
+}
+
+/* Sheets settle onto the page in order rather than all at once. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.panel:nth-child(2) { animation-delay: 0.05s; }
+.panel:nth-child(3) { animation-delay: 0.1s; }
+.panel:nth-child(4) { animation-delay: 0.15s; }
+.panel:nth-child(5) { animation-delay: 0.2s; }
+.panel:nth-child(6) { animation-delay: 0.25s; }
+.panel:nth-child(7) { animation-delay: 0.3s; }
+
+/* The hero carries the motif at full width: the double rule of ₹ across its
+   head, where the page states its one important number. */
+.panel.is-hero {
+  padding-top: 1.75rem;
+  box-shadow: var(--lift);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel.is-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-top: 1px solid var(--keep);
+  border-bottom: 1px solid var(--keep);
+}
+
+.panel-title {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin: 0 0 1.125rem;
+  padding-bottom: 0.7rem;
+  position: relative;
+}
+
+/* Same double rule, hung under the title it belongs to. */
+.panel-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1.5rem;
+  height: 3px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 1.125rem;
+}
+
+.panel-head .panel-title { margin-bottom: 0; }
+
+/* ---------- the pace track ----------
+   One axis carries money and the verdict: the bar is what you have spent, the
+   hatching is where this month's rate lands you, and the rule is your budget.
+   Crossing the rule is the whole story. */
+
+.pace { padding-bottom: 0.25rem; }
+
+.pace-amount {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: clamp(2.75rem, 7.5vw, 4.5rem);
+  letter-spacing: -0.055em;
+  line-height: 1;
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.pace-amount.is-over { color: var(--over); }
+
+.pace-caption {
+  color: var(--ink-3);
+  margin: 0.6rem 0 2rem;
+  font-size: 0.875rem;
+}
+
+/* Squared off and unclipped on purpose: the budget marker hangs past the top and
+   bottom of the track, and overflow:hidden would cut it off. */
+.pace-track {
+  position: relative;
+  height: 1.25rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+
+.pace-spent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--spent);
+  transition: width 0.8s var(--ease);
+}
+
+/* Projection is hatched, not solid: it has not happened yet. */
+.pace-projected {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background-image: repeating-linear-gradient(-45deg, var(--spent) 0 1px, transparent 1px 6px);
+  opacity: 0.4;
+  transition: width 0.8s var(--ease) 0.15s, left 0.8s var(--ease) 0.15s;
+}
+
+.pace-projected.is-over {
+  background-image: repeating-linear-gradient(-45deg, var(--over) 0 2px, transparent 2px 6px);
+  opacity: 1;
+}
+
+/* Overflows the track so the threshold reads as a line drawn across it, and the
+   double bar keeps the ₹ motif on the most important rule on the page. */
+.pace-budget {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -1.9rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-left: 1px solid var(--ink);
+  border-right: 1px solid var(--ink);
+  transition: left 0.8s var(--ease);
+}
+
+.pace-budget.is-crossed {
+  border-left-color: var(--over);
+  border-right-color: var(--over);
+}
+
+/* Sits under the line it names, on whichever side has room. */
+.pace-budget-label {
+  position: absolute;
+  bottom: 0;
+  left: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.pace-budget.is-crossed .pace-budget-label { color: var(--over); }
+
+.pace-budget-label.is-left {
+  left: auto;
+  right: 0.5rem;
+}
+
+.pace-verdict {
+  margin: 2.25rem 0 0;
+  font-family: var(--display);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: -0.015em;
+  max-width: 40rem;
+  color: var(--ink-2);
+}
+
+.pace-verdict.is-over { color: var(--over); }
+
+.pace-verdict strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pace-verdict.is-over strong { color: inherit; }
+
+/* ---------- figures ----------
+   The summary band at the head of a statement: columns divided by hairlines,
+   figures in mono so they line up down the page. */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 1.125rem 0;
+}
+
+.figure {
+  padding: 0 1.125rem;
+  border-left: 1px solid var(--line-2);
+}
+
+.figure:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.figure-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  display: block;
+  line-height: 1.15;
+  /* An amount broken across two lines stops being one number. */
+  white-space: nowrap;
+}
+
+.figure-value.is-keep { color: var(--keep); }
+.figure-value.is-over { color: var(--over); }
+
+.figure-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0.4rem 0 0;
+}
+
+/* ---------- breakdown bars ---------- */
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr) 5.5rem;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.45rem 0;
+}
+
+.bar-label {
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s ease;
+}
+
+.bar-track {
+  height: 0.5rem;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--spent);
+  border-radius: var(--r-sm);
+  transition: width 0.7s var(--ease), background 0.15s ease;
+}
+
+/* Coarse enough to read as hatching at this height: a finer pattern just looks
+   like a paler solid bar, which loses the "has not happened yet" distinction. */
+.bar-fill.is-forecast {
+  background-image: repeating-linear-gradient(-45deg, var(--spent) 0 2px, transparent 2px 6px);
+  opacity: 0.6;
+}
+
+.bar-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  text-align: right;
+  position: relative;
+}
+
+/* Reading a bar against its neighbours is the point, so hovering one names its
+   share of the month rather than making you compare lengths by eye. */
+.bar-row:hover .bar-label { color: var(--keep); }
+.bar-row:hover .bar-fill { background-color: var(--keep); }
+
+.bar-share {
+  position: absolute;
+  right: 0;
+  top: -1.15rem;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  color: var(--keep);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.bar-row:hover .bar-share { opacity: 1; }
+
+/* ---------- the margin note ----------
+   The written analysis is an annotation on the books, not a feature card: a
+   hanging bracket in the margin and the reviewer's hand in it. */
+
+.margin-note {
+  position: relative;
+  padding-left: 1.5rem;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--ink-2);
+  max-width: 42rem;
+}
+
+.margin-note + .margin-note { margin-top: 0.9rem; }
+
+.margin-note::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 3px;
+  border-left: 1px solid var(--keep);
+  border-right: 1px solid var(--keep);
+}
+
+/* Only the first paragraph carries the bracket; the rest hang under it. */
+.margin-note + .margin-note::before { display: none; }
+
+.attribution {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 1.25rem 0 0;
+  padding-left: 1.5rem;
+}
+
+/* ---------- savings ---------- */
+
+.goal {
+  padding: 1.05rem 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.goal:first-of-type { padding-top: 0; }
+
+.goal:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.goal-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.goal-name {
+  font-family: var(--display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.goal-figures {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  color: var(--ink-3);
+}
+
+.goal-figures strong {
+  color: var(--keep);
+  font-weight: 500;
+}
+
+.goal-track {
+  height: 0.625rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.goal-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--keep);
+  transition: width 0.8s var(--ease);
+}
+
+/* A reached goal reads as struck metal rather than a part-filled bar. */
+.goal-fill.is-complete {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--keep) 0 3px,
+    var(--keep-wash) 3px 6px
+  );
+}
+
+.goal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0.65rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+}
+
+.tag.is-ahead,
+.tag.is-complete { color: var(--keep); }
+
+.tag.is-behind { color: var(--over); }
+
+.tag.is-none,
+.tag.is-unknown { color: var(--ink-3); }
+
+/* Six months of savings, above and below the line. */
+/* Tight gaps keep the zero axis reading as one continuous line rather than six
+   dashes with bars parked on them. */
+.spark {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.2rem;
+}
+
+.spark-col {
+  display: flex;
+  flex-direction: column;
+  height: 6.5rem;
+}
+
+.spark-up {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+
+.spark-down { flex: 1; }
+
+/* Centred and capped: a bar as wide as its column reads as a block, not a
+   reading on a chart. */
+.spark-bar {
+  width: 100%;
+  max-width: 2.75rem;
+  margin-inline: auto;
+  background: var(--keep);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  min-height: 2px;
+  transition: height 0.7s var(--ease), opacity 0.15s ease;
+}
+
+.spark-bar.is-deficit {
+  background: var(--over);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+}
+
+.spark-col:hover .spark-bar { opacity: 0.72; }
+
+.spark-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
+
+.spark-label.is-current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ---------- forms ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  transition: color 0.15s ease;
+}
+
+/* The label follows focus, so the field you are typing in says so twice. */
+.field:focus-within .field-label { color: var(--keep); }
+
+input,
+select {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.6rem;
+  min-width: 0;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:hover,
+select:hover { border-color: var(--ink-3); }
+
+input:focus,
+select:focus {
+  background: var(--surface);
+  border-color: var(--keep);
+  box-shadow: 0 0 0 3px var(--keep-wash);
+  outline: none;
+}
+
+input::placeholder { color: var(--ink-3); }
+
+/* Keyboard focus keeps a hard outline of its own: the wash alone is too quiet
+   to find a field by. */
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--keep);
+  outline-offset: 2px;
+}
+
+.input-note { flex: 1 1 12rem; }
+
+button {
+  font-family: var(--sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.btn {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+  padding: 0.5rem 1.1rem;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover {
+  background: var(--keep);
+  border-color: var(--keep);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -4px var(--keep);
+}
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn-quiet {
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-3);
+  padding: 0.5rem 1.1rem;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn-quiet:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+.btn-quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Destructive actions stay quiet until you reach for them. */
+.btn-link {
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  padding: 0.15rem 0;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line);
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.btn-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.btn-link.is-danger:hover { color: var(--over); }
+
+.btn-link.is-keep:hover { color: var(--keep); }
+
+/* ---------- table ---------- */
+
+/* A table too wide for the panel scrolls itself; the page never does. */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 22rem;
+}
+
+.table th {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+  padding: 0 0.75rem 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.table td {
+  padding: 0.65rem 0.75rem 0.65rem 0;
+  border-bottom: 1px solid var(--line-2);
+  vertical-align: baseline;
+}
+
+.table tbody tr { transition: background 0.12s ease; }
+
+.table tbody tr:hover { background: var(--surface-2); }
+
+.table tr:last-child td { border-bottom: 0; }
+
+.table .col-amount {
+  text-align: right;
+  padding-right: 1.75rem;
+}
+
+/* Takes up the slack so the figure sits near what it describes instead of being
+   stranded mid-table by an empty note column. */
+.table .col-note { width: 100%; }
+
+.table .col-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Dates and amounts hold one line: the note column takes the table's slack, and
+   without this it takes it from "28 Jul" instead. */
+.cell-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.cell-muted { color: var(--ink-3); }
+
+/* Edit and Delete on every row is a wall of links, but hiding them outright
+   makes you hunt for them. Held back until the row you point at claims them. */
+.row-actions {
+  display: inline-flex;
+  gap: 0.9rem;
+}
+
+.table .row-actions {
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.table tbody tr:hover .row-actions,
+.table .row-actions:focus-within { opacity: 1; }
+
+/* Nothing to hover with: a touch screen only ever sees the resting state. */
+@media (hover: none) {
+  .table .row-actions { opacity: 1; }
+}
+
+/* ---------- states ---------- */
+
+.empty {
+  color: var(--ink-3);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.notice {
+  border: 1px solid var(--over);
+  border-left-width: 3px;
+  border-radius: var(--r-sm);
+  background: var(--over-wash);
+  color: var(--over);
+  padding: 0.65rem 0.85rem;
+  margin: 1rem 0 0;
+  font-size: 0.875rem;
+}
+
+.confirm {
+  color: var(--ink-3);
+  font-size: 0.875rem;
+  margin: 1rem 0 0;
+}
+
+/* ---------- responsive ---------- */
+
+/* One column before the panels get too narrow to read a bar in. */
+@media (max-width: 64rem) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 52rem) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+
+  .rail {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 1.25rem var(--gutter);
+    gap: 1rem;
+  }
+
+  .rail-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  /* Sideways, the marker belongs under the tab rather than beside it. */
+  .rail-tab.is-active::before {
+    left: 0.6rem;
+    right: 0.6rem;
+    top: auto;
+    bottom: 0.1rem;
+    width: auto;
+    height: 3px;
+    border-left: 0;
+    border-right: 0;
+    border-top: 1px solid var(--keep);
+    border-bottom: 1px solid var(--keep);
+  }
+
+  .rail-divider { display: none; }
+
+  .rail-foot { margin-top: 0; }
+
+  .view { padding-top: 1.5rem; }
+
+  .panel { padding: 1.25rem; }
+
+  .bar-row {
+    grid-template-columns: 6rem minmax(0, 1fr) 4.75rem;
+    gap: 0.7rem;
+  }
+
+  .figure {
+    padding: 0;
+    border-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

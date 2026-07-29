@@ -1,0 +1,3 @@
+expense-tracker.db
+*.exe
+.env
