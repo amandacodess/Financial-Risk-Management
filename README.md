@@ -1,80 +1,60 @@
-# Ledger
+# LodgeLedger — Financial Risk and Budget Monitoring Dashboard
 
-A private expense tracker with a Go/SQLite backend and a React frontend. It
-records what you spend, what comes in, and what you put aside, forecasts next
-month from your own history, and warns you when this month's pace overshoots
-your budget.
+A personal finance dashboard: record income and expenses, set monthly budgets per
+category, and see budget-versus-actual, savings rate and rule-based risk alerts.
+Each person signs in to their own account, and accounts can't see each other's data.
 
-Everything is local. The one exception is the written analysis, which is opt-in
-and described below.
+**Stack:** React + Vite frontend (`frontend/`), FastAPI backend (`backend/`),
+Supabase PostgreSQL database (`sql/`).
+
+> Based on [mohak9146-dotcom/Finance-Tracker](https://github.com/mohak9146-dotcom/Finance-Tracker)
+> (commit `8ed0f0d`), reused with the author's permission. The original
+> repository has no licence file. Its React interface (design, navigation and
+> pages) is kept. Its Go/SQLite backend and the optional Gemini written analysis
+> were removed and replaced by the FastAPI + PostgreSQL backend. The original
+> Go code and its tests stay in git history at that commit. Their test cases
+> were ported to pytest (`backend/tests/`).
 
 ## What it does
 
-**Overview** — what you have spent against your budget, where it went, what you
-kept, next month's forecast per category, and a written analysis if you have
-turned that on.
+**Sign in / Create account** — email and password. Each new account starts empty,
+with its own default categories. The light/dark mode switch is on every screen.
 
-**Expenses / Income** — add, edit and delete entries, filtered by month.
+**Overview** — pick a month and see income, expenses, net cash flow and savings
+rate; spending pace against your total budget; budget vs actual per category;
+risk alerts; where the money went; and a forecast from the three months before.
 
-**Savings** — a monthly savings rate (what came in, what went out, what share you
-kept) with six months of history, plus named goals. A goal with a deadline is
-judged on pace: what it needs per month against what it is actually getting.
-A goal without one just tracks the total.
+**Expenses / Income** — add, edit and delete entries, filtered by month. Each
+entry belongs to an expense or income category.
 
-**Categories / Budget** — the things you set up once: your categories, your
-monthly spending budget, and your monthly savings target.
+**Savings** — six months of savings history, plus named goals judged on pace.
+
+**Categories / Budget** — your categories, monthly budgets per expense category,
+and your monthly savings target.
 
 ## Running locally
 
-Two servers, side by side.
-
-**Backend** (Go, listens on `:8080` by default, creates `backend/expense-tracker.db`):
+Backend setup (Supabase, `.env`, accounts, API reference, risk rules, tests): see
+[backend/README.md](backend/README.md). In short: run `sql/schema.sql` in the
+Supabase SQL Editor, put the Session pooler connection string in `backend/.env`,
+then start both servers.
 
     cd backend
-    go run .
-
-If `8080` is already taken, set `PORT` to a free port before starting the server.
-
-**Frontend** (Vite + React, listens on `:5173`, proxies `/api` to the backend port):
+    .venv/Scripts/uvicorn main:app --port 8080 --env-file .env
 
     cd frontend
     npm install   # first time only
     npm run dev
 
-If you changed the backend port, set `VITE_BACKEND_PORT` to the same value
-before running the frontend dev server.
-
-Open the URL Vite prints (typically http://localhost:5173).
-
-## The written analysis (optional)
-
-Overview can carry a short written review of your figures, produced by Google's
-Gemini. It is off unless you provide a key.
-
-    cd backend
-    cp .env.example .env
-    # paste your key from https://aistudio.google.com/apikey
-    go run .
-
-The server prints `gemini: enabled` on startup when it finds a key. `.env` is
-gitignored.
-
-Without a key nothing breaks: budgets, savings, goals and the per-category
-forecast are all computed locally from your own data and never need the network.
-The analysis panel simply explains that it is not configured.
-
-**What gets sent, if you turn it on:** monthly totals per category, monthly
-income totals, your budget and savings target, and your goal names and progress.
-**The notes you write on individual entries are never sent.** An answer is reused
-until your figures change, so reloading the page does not spend another call.
-
-`GEMINI_MODEL` overrides the model (default `gemini-3.6-flash`). Use a 3-series
-model — the request sets a thinking level, which older models reject.
+Open http://localhost:5173. Vite proxies `/api` to port 8080. If you use a
+different port, set `VITE_BACKEND_PORT` to match.
 
 ## Tests
 
     cd backend
-    go test ./...
+    .venv/Scripts/python -m pytest
 
     cd frontend
+    npm test
     npm run lint
+    npm run build

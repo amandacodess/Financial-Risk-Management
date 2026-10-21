@@ -1,4 +1,4 @@
-/* Ledger — a private, local record of what you spend, earn, and put aside, in rupees.
+/* LodgeLedger — a record of what you spend, earn, and put aside, in rupees.
 
    The motif: the ₹ sign is two stacked bars over a stem, and those bars are the
    line you measure yourself against. So a double rule marks every place the
@@ -37,6 +37,8 @@
   --keep-wash: light-dark(#e4f5f2, #0a2723);
   --over: light-dark(#c81e46, #ff6183);
   --over-wash: light-dark(#fdecef, #2a0d16);
+  --warn: light-dark(#9a5b00, #ffb547);
+  --warn-wash: light-dark(#fdf3e3, #2a1f0a);
 
   --lift: 0 1px 2px light-dark(rgba(8, 12, 19, 0.05), rgba(0, 0, 0, 0.5)),
     0 12px 28px -16px light-dark(rgba(8, 12, 19, 0.18), rgba(0, 0, 0, 0.9));
@@ -1003,6 +1005,137 @@ button {
   color: var(--ink-3);
   font-size: 0.875rem;
   margin: 1rem 0 0;
+}
+
+/* ---------- budgets and risks ---------- */
+
+/* Budget vs actual: the fill is the share of the budget used, coloured by the
+   same status the risk rules report. */
+.bar-fill.is-ok { background: var(--keep); }
+.bar-fill.is-warning { background: var(--warn); }
+.bar-fill.is-over { background: var(--over); }
+.bar-value.is-warning { color: var(--warn); }
+.bar-value.is-exceeded { color: var(--over); }
+
+.budget-line + .budget-line { margin-top: 0.35rem; }
+
+.budget-detail {
+  margin: -0.2rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.risk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.risk {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid currentColor;
+  border-radius: var(--r-sm);
+  font-size: 0.9rem;
+}
+
+.risk > span:last-child { color: var(--ink); }
+.risk.is-critical { color: var(--over); background: var(--over-wash); }
+.risk.is-warning { color: var(--warn); background: var(--warn-wash); }
+
+.tag.is-critical { color: var(--over); }
+.tag.is-warning { color: var(--warn); }
+
+.confirm.is-success { color: var(--keep); }
+
+.view-tools { margin-bottom: 1.25rem; }
+
+/* ---------- account ---------- */
+
+.rail-user {
+  margin: 0 0 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-user strong { color: var(--ink); font-weight: 500; }
+
+.rail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--gutter);
+  position: relative;
+}
+
+.auth-top {
+  position: absolute;
+  top: 1rem;
+  right: var(--gutter);
+}
+
+.auth-card {
+  width: min(26rem, 100%);
+  margin: 0;
+}
+
+.auth-brand { margin-bottom: 0.75rem; }
+
+.auth-tagline {
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+  color: var(--ink-3);
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.auth-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.auth-tab:hover { color: var(--ink); }
+.auth-tab.is-active { color: var(--ink); border-bottom-color: var(--keep); }
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-form input { width: 100%; }
+.auth-form .notice { margin: 0; }
+.auth-submit { width: 100%; }
+
+.auth-hint {
+  font-size: 0.75rem;
+  color: var(--ink-3);
 }
 
 /* ---------- responsive ---------- */

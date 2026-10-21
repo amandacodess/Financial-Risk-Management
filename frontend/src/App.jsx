@@ -1,15 +1,19 @@
-import { Component, useState } from 'react'
+import { Component, useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import Expenses from './pages/Expenses'
 import Income from './pages/Income'
 import Savings from './pages/Savings'
 import Categories from './pages/Categories'
 import Settings from './pages/Settings'
-import { monthLabel } from './format'
+import AuthPage from './AuthPage'
+import ThemeToggle from './ThemeToggle'
+import { getMe, getToken, logout, onLoggedOut } from './api'
+import { todayLabel } from './format'
 
 // "Budget" rather than "Settings": the page holds what you set, so name it after
-// that. Month-scoped pages carry the month as an eyebrow. The divider separates
-// what you record daily from what you set up once.
+// that. Month-scoped pages carry today's date as an eyebrow (the month being
+// viewed is in each page's own "Showing" control). The divider separates what
+// you record daily from what you set up once.
 const TABS = [
   { label: 'Overview', Page: Dashboard, dated: true },
   { label: 'Expenses', Page: Expenses, dated: true },
@@ -34,42 +38,7 @@ class PageBoundary extends Component {
   }
 }
 
-// null means "follow the system"; a stored value means the reader chose.
-const storedTheme = () => {
-  try {
-    return localStorage.getItem('ledger-theme')
-  } catch {
-    return null
-  }
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState(storedTheme)
-
-  const choose = (next) => {
-    setTheme(next)
-    document.documentElement.dataset.theme = next
-    try {
-      localStorage.setItem('ledger-theme', next)
-    } catch {
-      // Private browsing refuses storage; the choice just will not persist.
-    }
-  }
-
-  // Whichever palette is not showing is the one worth offering. Without a
-  // stored choice, read what the system actually resolved to.
-  const isDark =
-    theme === 'dark' ||
-    (!theme && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-
-  return (
-    <button className="theme-toggle" onClick={() => choose(isDark ? 'light' : 'dark')}>
-      {isDark ? 'Day ledger' : 'Night ledger'}
-    </button>
-  )
-}
-
-export default function App() {
+function Shell({ user, onSignOut }) {
   const [tab, setTab] = useState('Overview')
   const active = TABS.find((t) => t.label === tab)
   const { Page } = active
@@ -79,7 +48,7 @@ export default function App() {
       <nav className="rail">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">₹</span>
-          Ledger
+          LodgeLedger
         </div>
         <div className="rail-nav">
           {TABS.map(({ label, divider }, i) =>
@@ -98,13 +67,19 @@ export default function App() {
           )}
         </div>
         <div className="rail-foot">
-          <ThemeToggle />
+          <p className="rail-user" title={user.email}>
+            Signed in as <strong>{user.name}</strong>
+          </p>
+          <div className="rail-actions">
+            <ThemeToggle />
+            <button type="button" className="theme-toggle" onClick={onSignOut}>Sign out</button>
+          </div>
         </div>
       </nav>
 
       <main className="view">
         <header className="view-head">
-          {active.dated && <p className="eyebrow">{monthLabel()}</p>}
+          {active.dated && <p className="eyebrow">Today · {todayLabel()}</p>}
           <h1 className="view-title">{tab}</h1>
         </header>
         <PageBoundary key={tab}>
@@ -113,4 +88,44 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+export default function App() {
+  // undefined: still checking a stored session; null: signed out.
+  const [user, setUser] = useState(() => (getToken() ? undefined : null))
+  const [bootError, setBootError] = useState('')
+
+  const checkSession = () => {
+    setBootError('')
+    getMe()
+      .then(setUser)
+      .catch((err) => (err.status === 401 ? setUser(null) : setBootError(err.message)))
+  }
+
+  useEffect(() => {
+    // Any page that gets a 401 (expired or revoked session) lands here.
+    const stop = onLoggedOut(() => setUser(null))
+    if (getToken()) checkSession()
+    return stop
+  }, [])
+
+  const signOut = async () => {
+    await logout()
+    setUser(null)
+  }
+
+  if (bootError) {
+    return (
+      <div className="auth-shell">
+        <p className="notice" role="alert">
+          {bootError} <button className="btn-link" onClick={checkSession}>Try again</button>
+        </p>
+      </div>
+    )
+  }
+  if (user === undefined) return <div className="auth-shell"><p className="empty">Loading…</p></div>
+  if (user === null) return <AuthPage onSignedIn={setUser} />
+  // Keyed by account: switching users remounts every page, so nothing from the
+  // previous account's screens can linger.
+  return <Shell key={user.id} user={user} onSignOut={signOut} />
 }

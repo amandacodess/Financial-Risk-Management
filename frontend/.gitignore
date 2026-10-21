@@ -1,2 +1,7 @@
 node_modules
 dist
+
+# Local environment files (may hold machine-specific settings)
+.env
+.env.*
+!.env.example

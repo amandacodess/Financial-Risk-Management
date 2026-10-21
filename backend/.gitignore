@@ -1,3 +1,7 @@
-expense-tracker.db
-*.exe
+# Secrets
 .env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/

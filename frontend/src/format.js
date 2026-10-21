@@ -16,6 +16,10 @@ export const monthLabel = (month) => {
   return d.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })
 }
 
+// Today in full ("21 October 2026"), for the page header.
+export const todayLabel = () =>
+  new Date().toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: 'numeric' })
+
 export const dayLabel = (date) =>
   new Date(`${date}T00:00:00`).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
 

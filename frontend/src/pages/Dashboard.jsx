@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getPrediction, getExpenses, getCategories, getSavings, getInsight } from '../api'
-import { currentMonth, money, moneyRound, signedMoney, percent } from '../format'
+import { getSummary } from '../api'
+import { currentMonth, money, moneyRound, signedMoney, percent, monthLabel } from '../format'
 import { useCountUp } from '../useCountUp'
 
 // Bars are scaled to the largest category so they can be compared by length,
@@ -22,62 +22,99 @@ function Bar({ label, value, max, total, forecast }) {
   )
 }
 
+const STATUS_FILL = { ok: 'bar-fill is-ok', warning: 'bar-fill is-warning', exceeded: 'bar-fill is-over' }
+const STATUS_WORD = { ok: 'within budget', warning: 'near limit', exceeded: 'over budget' }
+
+// "100.0%" would read as on budget for a category ₹0.01 over, so anything
+// over its budget never shows less than ">100%".
+const usedLabel = (line) =>
+  line.status === 'exceeded' && line.utilization_pct <= 100 ? '>100%' : `${line.utilization_pct.toFixed(1)}%`
+
+// A budgeted category against its own limit: the bar is the share of the
+// budget used, coloured by the same status the risk rules use.
+function BudgetBar({ line }) {
+  const width = Math.min(100, line.utilization_pct)
+  return (
+    <div className="budget-line">
+      <div className="bar-row">
+        <div className="bar-label">{line.category}</div>
+        <div className="bar-track" role="img"
+          aria-label={`${line.category}: ${usedLabel(line)} of budget, ${STATUS_WORD[line.status]}`}>
+          <div className={STATUS_FILL[line.status]} style={{ width: `${width}%` }} />
+        </div>
+        <div className={line.status === 'ok' ? 'bar-value' : `bar-value is-${line.status}`}>
+          {usedLabel(line)}
+        </div>
+      </div>
+      <p className="budget-detail">
+        {money(line.spent)} of {money(line.budget)} ·{' '}
+        {line.remaining >= 0 ? `${money(line.remaining)} left` : `${money(-line.remaining)} over`}
+      </p>
+    </div>
+  )
+}
+
 // One axis carries both the money and the verdict: solid is what you have spent,
 // hatched is where this month's rate lands you, and the rule is the budget.
-function PaceTrack({ alert }) {
-  const { monthly_budget: budget, spent_so_far: spent, projected_total: projected } = alert
+function PaceTrack({ summary }) {
+  const budget = summary.budget_total
+  const spent = summary.expenses
+  const { projected_expenses: projected, days_elapsed: day, days_in_month: days } = summary.pace
   const hasBudget = budget > 0
+  const over = hasBudget && projected > budget
+  const finished = day === days
   const counted = useCountUp(spent)
 
   // Scaling to the largest of the three keeps an overshoot on screen instead of
   // clipping it at the end of the track.
   const scale = Math.max(budget, projected, spent, 1)
   const pct = (n) => `${(n / scale) * 100}%`
-
   const budgetAt = (budget / scale) * 100
-  const remaining = budget - projected
 
   return (
     <div className="pace">
       {/* Rounded: paise are noise on a figure set this large. */}
-      <span className={alert.over_budget ? 'pace-amount is-over' : 'pace-amount'}>
-        {moneyRound(counted)}
-      </span>
+      <span className={over ? 'pace-amount is-over' : 'pace-amount'}>{moneyRound(counted)}</span>
       <p className="pace-caption">
-        spent so far · day {alert.days_elapsed} of {alert.days_in_month}
+        spent {finished ? 'in the month' : `so far · day ${day} of ${days}`}
       </p>
 
       <div className="pace-track">
         <div className="pace-spent" style={{ width: pct(spent) }} />
         <div
-          className={alert.over_budget ? 'pace-projected is-over' : 'pace-projected'}
+          className={over ? 'pace-projected is-over' : 'pace-projected'}
           style={{ left: pct(spent), width: pct(Math.max(0, projected - spent)) }}
         />
         {hasBudget && (
-          <div
-            className={alert.over_budget ? 'pace-budget is-crossed' : 'pace-budget'}
-            style={{ left: pct(budget) }}
-          >
+          <div className={over ? 'pace-budget is-crossed' : 'pace-budget'} style={{ left: pct(budget) }}>
             {/* The label hangs off whichever side of the line has room. */}
             <span className={budgetAt > 50 ? 'pace-budget-label is-left' : 'pace-budget-label'}>
-              budget {moneyRound(budget)}
+              budgets {moneyRound(budget)}
             </span>
           </div>
         )}
       </div>
 
-      <p className={alert.over_budget ? 'pace-verdict is-over' : 'pace-verdict'}>
+      <p className={over ? 'pace-verdict is-over' : 'pace-verdict'}>
         {!hasBudget ? (
-          <>Set a monthly budget to see whether this pace lands inside it.</>
-        ) : alert.over_budget ? (
+          <>Set category budgets under Budget to see whether this pace lands inside them.</>
+        ) : finished ? (
+          over ? (
+            <>The month closed at <strong>{moneyRound(spent)}</strong> —{' '}
+              <strong>{moneyRound(spent - budget)} over</strong> the {moneyRound(budget)} budgeted.</>
+          ) : (
+            <>The month closed at <strong>{moneyRound(spent)}</strong>,{' '}
+              <strong>{moneyRound(budget - spent)}</strong> inside the {moneyRound(budget)} budgeted.</>
+          )
+        ) : over ? (
           <>
             At this rate you finish the month at <strong>{moneyRound(projected)}</strong> —{' '}
-            <strong>{moneyRound(alert.projected_overage)} over</strong> budget.
+            <strong>{moneyRound(projected - budget)} over</strong> your budgets.
           </>
         ) : (
           <>
             At this rate you finish the month at <strong>{moneyRound(projected)}</strong>, leaving{' '}
-            <strong>{moneyRound(remaining)}</strong> of your budget unspent.
+            <strong>{moneyRound(budget - projected)}</strong> of your budgets unspent.
           </>
         )}
       </p>
@@ -85,158 +122,158 @@ function PaceTrack({ alert }) {
   )
 }
 
-// The written analysis, set as an annotation on the books rather than a card:
-// a hanging bracket in the margin and the reviewer's hand in italic.
-function Analysis() {
-  const [insight, setInsight] = useState(null)
-  const [busy, setBusy] = useState(true)
-
-  const load = useCallback((refresh) => {
-    setBusy(true)
-    getInsight(refresh)
-      .then(setInsight)
-      .catch((err) => setInsight({ available: false, reason: err.message }))
-      .finally(() => setBusy(false))
-  }, [])
-
-  useEffect(() => { load(false) }, [load])
-
+// The backend's risk engine decides what is flagged; this only presents it.
+function Risks({ risks }) {
   return (
     <div className="panel is-wide">
-      <div className="panel-head">
-        <h2 className="panel-title">The analysis</h2>
-        {insight?.available && (
-          <button className="btn-link" onClick={() => load(true)} disabled={busy}>
-            Read again
-          </button>
-        )}
-      </div>
-
-      {busy && <p className="empty">Reading the books…</p>}
-
-      {!busy && insight && !insight.available && <p className="empty">{insight.reason}</p>}
-
-      {!busy && insight?.available && (
-        <>
-          {insight.text.split(/\n\s*\n/).map((paragraph, i) => (
-            <p className="margin-note" key={i}>{paragraph}</p>
+      <h2 className="panel-title">Risk alerts</h2>
+      {risks.length === 0 ? (
+        <p className="empty">Nothing flagged for this month under the current rules.</p>
+      ) : (
+        <ul className="risk-list">
+          {risks.map((r, i) => (
+            <li key={`${r.code}-${r.category_id ?? i}`} className={`risk is-${r.severity}`}>
+              <span className={`tag is-${r.severity}`}>{r.severity === 'critical' ? 'Critical' : 'Warning'}</span>
+              <span>{r.message}</span>
+            </li>
           ))}
-          <p className="attribution">
-            Reviewed by {insight.model} ·{' '}
-            {new Date(insight.generated_at).toLocaleString(undefined, {
-              day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
-            })}
-          </p>
-        </>
+        </ul>
       )}
+      <p className="confirm">
+        Illustrative rules, not financial advice: a warning at 80% of a category budget, a flag
+        above 100%, and a flag when expenses exceed income.
+      </p>
     </div>
   )
 }
 
 export default function Dashboard() {
-  const [prediction, setPrediction] = useState(null)
-  const [savings, setSavings] = useState(null)
-  const [currentSpend, setCurrentSpend] = useState([])
+  const [month, setMonth] = useState(currentMonth)
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    Promise.all([getPrediction(), getExpenses(currentMonth()), getCategories(), getSavings()])
-      .then(([pred, expenses, categories, saved]) => {
-        setPrediction(pred)
-        setSavings(saved)
-
-        const nameById = Object.fromEntries(categories.map((c) => [c.id, c.name]))
-        const totals = {}
-        for (const e of expenses) {
-          const name = nameById[e.category_id] || 'Unknown'
-          totals[name] = (totals[name] || 0) + e.amount
-        }
-        setCurrentSpend(
-          Object.entries(totals)
-            .map(([category, amount]) => ({ category, amount }))
-            .sort((a, b) => b.amount - a.amount),
-        )
-      })
+  const load = useCallback(() => {
+    setLoading(true)
+    setError('')
+    // Cleared first: the previous month's totals must never sit under a new month.
+    setSummary(null)
+    getSummary(month)
+      .then(setSummary)
       .catch((err) => setError(err.message))
-  }, [])
+      .finally(() => setLoading(false))
+  }, [month])
 
-  if (error) return <p className="notice">{error}</p>
-  if (!prediction || !savings) return <p className="empty">Loading…</p>
+  useEffect(() => { load() }, [load])
 
-  const { budget_alert: alert, forecast } = prediction
-  const spendMax = Math.max(1, ...currentSpend.map((s) => s.amount))
-  const spendTotal = currentSpend.reduce((sum, s) => sum + s.amount, 0)
-  const forecastMax = Math.max(1, ...forecast.map((f) => f.predicted_amount))
-  const forecastTotal = forecast.reduce((sum, f) => sum + f.predicted_amount, 0)
-  const kept = savings.current
+  const picker = (
+    <div className="panel-head view-tools">
+      <label className="field">
+        <span className="field-label">Showing</span>
+        <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+      </label>
+      {summary && !loading && <p className="empty">{monthLabel(summary.month)}</p>}
+      {loading && <p className="empty" role="status">Loading…</p>}
+    </div>
+  )
+
+  if (error) {
+    return (
+      <div>
+        {picker}
+        <p className="notice" role="alert">
+          {error} <button className="btn-link" onClick={load}>Try again</button>
+        </p>
+      </div>
+    )
+  }
+  if (!summary) return picker
+
+  const s = summary
+  const spending = s.categories.filter((c) => c.spent > 0)
+  const budgeted = s.categories.filter((c) => c.budget !== null)
+  const spendMax = Math.max(1, ...spending.map((c) => c.spent))
+  const forecastMax = Math.max(1, ...s.forecast.map((f) => f.predicted))
+  const forecastTotal = s.forecast.reduce((sum, f) => sum + f.predicted, 0)
 
   // What happened and what is coming sit side by side: read as a pair, the two
   // category lists answer "is next month going to look like this one?".
   return (
-    <div className="grid">
-      <div className="panel is-hero is-wide">
-        <PaceTrack alert={alert} />
-      </div>
+    <div>
+      {picker}
+      <div className="grid">
+        <div className="panel is-hero is-wide">
+          <PaceTrack summary={s} />
+        </div>
 
-      <div className="panel is-wide">
-        <h2 className="panel-title">What you kept</h2>
-        <div className="figures">
-          <div className="figure">
-            <span className={kept.net < 0 ? 'figure-value is-over' : 'figure-value is-keep'}>
-              {signedMoney(kept.net)}
-            </span>
-            <p className="figure-label">This month</p>
+        <div className="panel is-wide">
+          <h2 className="panel-title">The month in figures</h2>
+          <div className="figures">
+            <div className="figure">
+              <span className="figure-value">{moneyRound(s.income)}</span>
+              <p className="figure-label">Income</p>
+            </div>
+            <div className="figure">
+              <span className="figure-value">{moneyRound(s.expenses)}</span>
+              <p className="figure-label">Expenses</p>
+            </div>
+            <div className="figure">
+              <span className={s.net_cash_flow < 0 ? 'figure-value is-over' : 'figure-value is-keep'}>
+                {signedMoney(s.net_cash_flow)}
+              </span>
+              <p className="figure-label">Net cash flow</p>
+            </div>
+            <div className="figure">
+              <span className={s.net_cash_flow < 0 ? 'figure-value is-over' : 'figure-value'}>
+                {s.savings_rate_pct === null ? '—' : percent(s.savings_rate_pct)}
+              </span>
+              <p className="figure-label">Savings rate</p>
+            </div>
           </div>
-          <div className="figure">
-            <span className={kept.net < 0 ? 'figure-value is-over' : 'figure-value'}>
-              {kept.income > 0 ? percent(kept.rate) : '—'}
-            </span>
-            <p className="figure-label">Savings rate</p>
-          </div>
-          <div className="figure">
-            <span className="figure-value is-keep">{moneyRound(savings.total_saved)}</span>
-            <p className="figure-label">Put aside so far</p>
-          </div>
-          <div className="figure">
-            <span className="figure-value">{savings.goals.length}</span>
-            <p className="figure-label">
-              {savings.goals.length === 1 ? 'Goal running' : 'Goals running'}
+          <p className="confirm">
+            Net cash flow is income minus expenses recorded for this month — not a bank balance.
+            {s.savings_rate_pct === null && ' The savings rate needs some income to be measured against.'}
+          </p>
+        </div>
+
+        <Risks risks={s.risks} />
+
+        <div className="panel">
+          <h2 className="panel-title">Budget vs actual</h2>
+          {budgeted.length === 0 ? (
+            <p className="empty">No budgets for this month. Add them under Budget.</p>
+          ) : (
+            budgeted.map((line) => <BudgetBar key={line.category_id} line={line} />)
+          )}
+        </div>
+
+        <div className="panel">
+          <h2 className="panel-title">Where it went</h2>
+          {spending.length === 0 ? (
+            <p className="empty">Nothing recorded this month. Add an entry under Expenses.</p>
+          ) : (
+            spending.map((c) => (
+              <Bar key={c.category_id} label={c.category} value={c.spent} max={spendMax} total={s.expenses} />
+            ))
+          )}
+        </div>
+
+        <div className="panel is-wide">
+          <h2 className="panel-title">Expected this month, if the three before repeat</h2>
+          {s.forecast.length === 0 ? (
+            <p className="empty">
+              No spending in the three months before this one. The forecast appears once there is history.
             </p>
-          </div>
+          ) : (
+            s.forecast.map((f) => (
+              <Bar
+                key={f.category_id} label={f.category} value={f.predicted}
+                max={forecastMax} total={forecastTotal} forecast
+              />
+            ))
+          )}
         </div>
       </div>
-
-      <div className="panel">
-        <h2 className="panel-title">Where it went</h2>
-        {currentSpend.length === 0 ? (
-          <p className="empty">Nothing recorded this month yet. Add an entry under Expenses.</p>
-        ) : (
-          currentSpend.map((s) => (
-            <Bar
-              key={s.category} label={s.category} value={s.amount}
-              max={spendMax} total={spendTotal}
-            />
-          ))
-        )}
-      </div>
-
-      <div className="panel">
-        <h2 className="panel-title">Next month, if the last three repeat</h2>
-        {forecast.length === 0 ? (
-          <p className="empty">
-            No completed months on record yet. The forecast appears once you have history.
-          </p>
-        ) : (
-          forecast.map((f) => (
-            <Bar
-              key={f.category} label={f.category} value={f.predicted_amount}
-              max={forecastMax} total={forecastTotal} forecast
-            />
-          ))
-        )}
-      </div>
-
-      <Analysis />
     </div>
   )
 }

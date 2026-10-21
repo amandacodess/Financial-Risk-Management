@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getSavings, createGoal, deleteGoal, addContribution } from '../api'
+import { getMonthly, getGoals, getSettings, createGoal, deleteGoal, addContribution } from '../api'
 import {
   today, money, moneyRound, signedMoney, percent, monthShort, monthLabel, dayLabel,
 } from '../format'
@@ -71,7 +71,7 @@ function SavingsHistory({ history }) {
 
 function Goal({ goal, onContribute, onDelete }) {
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState(() => ({ amount: '', date: today(), note: '' }))
+  const [form, setForm] = useState(() => ({ amount: '', date: today(), description: '' }))
   const [busy, setBusy] = useState(false)
   const { tag, line } = paceCopy(goal)
 
@@ -80,11 +80,11 @@ function Goal({ goal, onContribute, onDelete }) {
     setBusy(true)
     try {
       await onContribute(goal.id, {
-        amount: parseFloat(form.amount),
+        amount: form.amount.trim(),
         date: form.date,
-        note: form.note,
+        description: form.description.trim(),
       })
-      setForm({ amount: '', date: today(), note: '' })
+      setForm({ amount: '', date: today(), description: '' })
       setOpen(false)
     } catch {
       // The page reports what went wrong; leave the form open and filled in
@@ -143,10 +143,11 @@ function Goal({ goal, onContribute, onDelete }) {
             <span className="field-label">Note</span>
             <input
               type="text" placeholder="Where it came from"
-              value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
+              maxLength={200}
+              value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </label>
-          <button type="submit" className="btn" disabled={busy}>Add money</button>
+          <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add money'}</button>
         </form>
       )}
     </div>
@@ -159,8 +160,26 @@ export default function Savings() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  // Six months of figures, the goals and the target, shaped into the one
+  // summary this page was built around.
   const load = useCallback(() => {
-    getSavings().then(setSummary).catch((err) => setError(err.message))
+    setError('')
+    return Promise.all([getMonthly(6), getGoals(), getSettings()])
+      .then(([monthly, goals, settings]) => {
+        const history = monthly.months.map((m) => ({
+          month: m.month, income: m.income, spent: m.expenses, net: m.net_cash_flow,
+          rate: m.savings_rate_pct,
+        }))
+        setSummary({
+          current: history[history.length - 1],
+          history,
+          average_rate: monthly.average_savings_rate_pct,
+          target: settings.savings_target,
+          goals,
+          total_saved: goals.reduce((sum, g) => sum + g.saved, 0),
+        })
+      })
+      .catch((err) => setError(err.message))
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -168,15 +187,19 @@ export default function Savings() {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!form.name.trim()) return setError('Give the goal a name.')
+    if (!/^\d+(\.\d{1,2})?$/.test(form.target_amount.trim()) || Number(form.target_amount) <= 0) {
+      return setError('Enter a target greater than 0, with at most two decimals.')
+    }
     setBusy(true)
     try {
       await createGoal({
-        name: form.name,
-        target_amount: parseFloat(form.target_amount),
-        target_date: form.target_date,
+        name: form.name.trim(),
+        target_amount: form.target_amount.trim(),
+        target_date: form.target_date || null,
       })
       setForm(emptyGoal())
-      load()
+      await load()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -188,7 +211,7 @@ export default function Savings() {
     setError('')
     try {
       await addContribution(goalId, contribution)
-      load()
+      await load()
     } catch (err) {
       setError(err.message)
       throw err
@@ -200,13 +223,19 @@ export default function Savings() {
     setError('')
     try {
       await deleteGoal(goal.id)
-      load()
+      await load()
     } catch (err) {
       setError(err.message)
     }
   }
 
-  if (error && !summary) return <p className="notice">{error}</p>
+  if (error && !summary) {
+    return (
+      <p className="notice" role="alert">
+        {error} <button className="btn-link" onClick={load}>Try again</button>
+      </p>
+    )
+  }
   if (!summary) return <p className="empty">Loading…</p>
 
   const { current, history, target, goals } = summary
@@ -288,12 +317,12 @@ export default function Savings() {
             <Goal key={g.id} goal={g} onContribute={contribute} onDelete={remove} />
           ))
         )}
-        {error && <p className="notice">{error}</p>}
+        {error && <p className="notice" role="alert">{error}</p>}
       </div>
 
       <div className="panel is-wide">
         <h2 className="panel-title">New goal</h2>
-        <form onSubmit={submit} className="controls">
+        <form onSubmit={submit} className="controls" noValidate>
           <label className="field input-note">
             <span className="field-label">Name</span>
             <input
